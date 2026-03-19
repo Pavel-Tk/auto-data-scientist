@@ -10,26 +10,21 @@ cp -r path/to/auto-data-scientist/.claude .claude/
 cp path/to/auto-data-scientist/launch_research.sh .
 cp path/to/auto-data-scientist/requirements.txt .
 pip install -r requirements.txt
-
-./launch_research.sh 8   # 8-hour autonomous run
 ```
 
-That's it. One command. The script will:
-1. Detect there's no `research_state.md` → enter **Init Mode** (interactive)
-2. Scan your data files, ask for the target column and time budget, run full EDA
-3. Generate a `feature_template.py` with dataset-specific preprocessing
-4. Write the research plan to `research_state.md`
-5. Begin the **autonomous loop** — no further input needed until the budget runs out
-
-### Launch from Within Claude Code
-
-If you're already in a Claude Code session:
+Then from inside Claude Code:
 
 ```
 /auto-research
 ```
 
-This will show your current progress and let you start (or resume) the research loop without leaving the session.
+That's it. The skill will:
+1. Scan your data files, ask for the target column and time budget, run full EDA
+2. Generate a `feature_template.py` with dataset-specific preprocessing
+3. Write the research plan to `research_state.md`
+4. Launch the autonomous loop — no further input needed until the budget runs out
+
+To resume or start a new run later, invoke `/auto-research` again.
 
 ## Architecture
 
@@ -96,49 +91,34 @@ your-project/
 
 ## Usage
 
-### First Run (Init + Loop)
+### First Run
 
-```bash
-./launch_research.sh 8
-```
-
-The launcher detects no `research_state.md` exists and enters **Init Mode**:
-- Scans for CSV/parquet files in the directory
-- Asks for the **target column** (only required input)
-- Auto-detects task type (binary classification, multiclass, regression) and metric
-- Validates data integrity (column alignment, ID uniqueness, target existence)
-- Runs full EDA (shape, distributions, correlations, cardinality, missing values)
-- Generates `feature_template.py` with dataset-specific preprocessing
-- Discusses strategy with you
-- Writes `research_state.md` with initial hypothesis queue
-
-Then immediately begins the autonomous loop.
+From inside Claude Code, run `/auto-research`. The skill will:
+- Scan for CSV/parquet files in the directory
+- Ask for the **target column** (only required input)
+- Auto-detect task type (binary classification, multiclass, regression) and metric
+- Validate data integrity (column alignment, ID uniqueness, target existence)
+- Run full EDA (shape, distributions, correlations, cardinality, missing values)
+- Generate `feature_template.py` with dataset-specific preprocessing
+- Discuss strategy with you
+- Write `research_state.md` with initial hypothesis queue
+- Ask for budget hours and launch the autonomous loop
 
 ### Resume a Stopped Run
 
-```bash
-./launch_research.sh 8
-```
-
-Same command. It detects `research_state.md` exists, reads the iteration count, and resumes. **Elapsed time from prior sessions is tracked** — the budget accounts for all time spent, not just the current session.
+Invoke `/auto-research` again from Claude Code. It will show your current progress and let you start a new run. **Elapsed time from prior sessions is tracked** — the budget accounts for all time spent, not just the current session.
 
 ### Check Progress
 
 ```bash
-./launch_research.sh --status    # Quick summary
+./launch_research.sh --status    # Quick summary from terminal
 cat research_state.md             # Full state
 ls logs/                          # Per-iteration outputs
 ```
 
-### Short Test Run
-
-```bash
-./launch_research.sh 1   # 1-hour test
-```
-
 ### Stop Early
 
-Press `Ctrl+C`. State is preserved — resume anytime.
+Press `Ctrl+C` in the terminal where the loop is running. State is preserved — resume anytime via `/auto-research`.
 
 ## Three-Phase Research Strategy
 
@@ -244,8 +224,8 @@ id,pred_prob
 2. Drop your `train.csv` and `test.csv` in it (or `data/` subfolder)
 3. Copy `.claude/`, `launch_research.sh`, and `requirements.txt` into the folder
 4. Run `pip install -r requirements.txt`
-5. Run `./launch_research.sh <hours>` OR use `/auto-research` from within Claude Code
-6. Answer the init questions (target column, time budget)
+5. Open Claude Code in the project folder
+6. Run `/auto-research` — answer the init questions (target column, time budget)
 7. Walk away
 
 The plugin auto-detects task type (classification or regression), metric, ID column, and adapts its strategy to the dataset's characteristics.

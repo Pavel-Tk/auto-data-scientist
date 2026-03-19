@@ -128,28 +128,11 @@ if [ -f "$ELAPSED_FILE" ]; then
     fi
 fi
 
-# --- Phase 1: Initialization (if needed) ---
+# --- Require initialization via /auto-research ---
 if [ ! -f "research_state.md" ]; then
-    log_header "Initialization Required"
-    log_info "No research_state.md found. Running interactive setup..."
-    log_info "This will scan your data, ask a few questions, and create the research plan."
-    echo ""
-
-    # Reset elapsed time for fresh init
-    echo "0" > "$ELAPSED_FILE"
-    PRIOR_ELAPSED=0
-
-    claude --skill auto-research \
-        "No research_state.md found — enter Init Mode. Working directory: $(pwd). Scan for datasets, interview me, run EDA, and write research_state.md."
-
-    if [ ! -f "research_state.md" ]; then
-        log_error "Initialization failed — research_state.md was not created."
-        log_error "Please try again: ./launch_research.sh $BUDGET_HOURS"
-        exit 1
-    fi
-
-    log_ok "Initialization complete. research_state.md created."
-    echo ""
+    log_error "No research_state.md found."
+    log_error "Initialize first by running /auto-research from inside Claude Code."
+    exit 1
 fi
 
 # --- Determine starting iteration ---

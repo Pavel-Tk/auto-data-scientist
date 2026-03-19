@@ -50,13 +50,16 @@ This mode activates when the user invokes `/auto-research` or says "start resear
    - "How many hours should the autonomous loop run?" (suggest: 2h, 4h, 8h, or custom)
    - If they want to add any new hypotheses or constraints before starting
 
-3. **Launch the loop** via Bash:
+3. **Reset elapsed time if user requests a fresh budget** (optional):
+   If the user wants to reset the clock, delete `logs/.elapsed_seconds` before launching.
+
+4. **Launch the loop** via Bash (run in background):
    ```bash
-   ./launch_research.sh {hours}
+   bash ./launch_research.sh {hours}
    ```
    The script handles everything from here — iteration management, timing, and graceful shutdown.
 
-4. Tell the user: "Research loop started. Monitor with `cat research_state.md` or `./launch_research.sh --status`. Press Ctrl+C in the terminal to stop (state is preserved)."
+5. Tell the user: "Research loop started. Monitor with `cat research_state.md` or `./launch_research.sh --status`. Press Ctrl+C in the terminal to stop (state is preserved)."
 
 ---
 
