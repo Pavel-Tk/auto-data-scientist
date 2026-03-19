@@ -133,7 +133,7 @@ ls logs/                          # Per-iteration outputs
 ### Short Test Run
 
 ```bash
-./launch_research.sh 0.1   # 6-minute test
+./launch_research.sh 1   # 1-hour test
 ```
 
 ### Stop Early
@@ -237,7 +237,6 @@ id,pred_prob
 - **Claude Code CLI** (`claude`) installed and authenticated
 - **Python 3.8+** with dependencies from `requirements.txt`
 - **bash** shell (Git Bash on Windows works)
-- **bc** command (for fractional hour math in the launcher)
 
 ## Generalizing to a New Dataset
 

@@ -12,7 +12,7 @@
 #   ./launch_research.sh          # Default 8-hour budget
 #   ./launch_research.sh 2        # 2-hour budget
 #   ./launch_research.sh 24       # 24-hour budget
-#   ./launch_research.sh 0.1      # 6-minute test run
+#   ./launch_research.sh 1        # 1-hour test run
 #   ./launch_research.sh --status # Show progress summary
 #
 # To stop early: Ctrl+C (state is preserved in research_state.md)
@@ -40,8 +40,8 @@ fi
 
 # --- Configuration ---
 BUDGET_HOURS="${1:-8}"
-# Use bc for floating point arithmetic (supports fractional hours like 0.5)
-BUDGET_SECONDS=$(echo "$BUDGET_HOURS * 3600" | bc | cut -d. -f1)
+# Pure bash integer arithmetic (pass whole hours like 2, 4, 8, 12)
+BUDGET_SECONDS=$((BUDGET_HOURS * 3600))
 COOLDOWN_SECONDS=5  # Delay between iterations to avoid API hammering
 ELAPSED_FILE="logs/.elapsed_seconds"  # Persistent elapsed time tracker
 ITERATION_TIMEOUT=2700  # Max seconds per iteration (45 minutes)
