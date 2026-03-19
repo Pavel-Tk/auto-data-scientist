@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p ~/.claude/agents)",
+      "Bash(mkdir -p ~/.claude/skills/auto-research-init)",
+      "Bash(mkdir -p ~/.claude/skills/auto-research)",
+      "Bash(chmod +x \"C:/SFMBA/S5andS6/Product_and_Marketing_Analytics/auto-data-scientist/launch_research.sh\")",
+      "Bash(mkdir -p \"C:/SFMBA/S5andS6/Product_and_Marketing_Analytics/auto-data-scientist/.claude/skills/auto-research\")",
+      "Bash(mkdir -p \"C:/SFMBA/S5andS6/Product_and_Marketing_Analytics/auto-data-scientist/.claude/agents\")",
+      "Bash(cp ~/.claude/skills/auto-research/SKILL.md \"C:/SFMBA/S5andS6/Product_and_Marketing_Analytics/auto-data-scientist/.claude/skills/auto-research/SKILL.md\")",
+      "Bash(cp ~/.claude/agents/experiment-worker.md \"C:/SFMBA/S5andS6/Product_and_Marketing_Analytics/auto-data-scientist/.claude/agents/experiment-worker.md\")",
+      "Bash(git:*)"
+    ]
+  }
+}

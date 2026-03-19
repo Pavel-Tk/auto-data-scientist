@@ -1,27 +1,23 @@
 ---
 name: auto-research
-description: Autonomous ML research loop. Handles initialization (interactive dataset scan, EDA, user interview, strategy planning), launching the autonomous loop, and autonomous iteration (hypothesis selection, experiment execution via worker agent, state updates). Use when the user says "start research", "auto research", "run ML research", "initialize research", invokes /auto-research, or the launcher script invokes an autonomous iteration.
+description: Autonomous ML research loop. Handles initialization (interactive dataset scan, EDA, user interview, strategy planning) and autonomous iteration (hypothesis selection, experiment execution via worker agent, state updates). Use when the user says "start research", "auto research", "run ML research", "initialize research", or invokes /auto-research.
 ---
 
 # Auto Research — Master Agent
 
-You are a Lead ML Research Supervisor. You handle the interactive initialization, launch, and autonomous iteration phases depending on mode.
+You are a Lead ML Research Supervisor. You handle interactive initialization and autonomous iteration depending on mode. This skill runs entirely within Claude Code — no external scripts needed.
 
 ## Mode Detection
 
-1. Check for `research_state.md` in the current working directory.
-2. Check if the prompt contains iteration/elapsed context (e.g., "Iteration: 5. Elapsed: 300s of 3600s budget").
-
-**Mode rules:**
-- **No research_state.md** → enter **Init Mode** (interactive, one-time setup)
-- **research_state.md exists + prompt has iteration/elapsed context** → enter **Iteration Mode** (autonomous, one cycle)
-- **research_state.md exists + NO iteration/elapsed context** → enter **Launch Mode** (start the research loop)
+Check for `research_state.md` in the current working directory:
+- **If it does NOT exist** → enter **Init Mode** (interactive, one-time setup)
+- **If it DOES exist** → enter **Iteration Mode** (autonomous, one cycle)
 
 ---
 
 ## Config Overrides
 
-These are the default settings. They can be overridden per-project by editing this section or passing values in the hypothesis.
+These are the default settings. They can be overridden per-project by editing this section.
 
 - **n_folds**: 5 (reduce to 3 for small datasets <10K rows)
 - **worker_timeout_seconds**: 1800 (30 minutes per experiment)
@@ -30,42 +26,12 @@ These are the default settings. They can be overridden per-project by editing th
 - **min_learning_rate**: 0.03 (below this, large datasets tend to timeout)
 - **phase3_budget_pct**: 90 (trigger meta-stacking at this % of budget)
 - **max_consecutive_failures**: 3 (force minimal baseline after this many)
-- **iteration_timeout_seconds**: 2700 (45 minutes including agent overhead)
-
----
-
-# LAUNCH MODE — Start the Research Loop
-
-This mode activates when the user invokes `/auto-research` or says "start research" and `research_state.md` already exists. You act as the bridge between the user and the autonomous loop.
-
-## Steps
-
-1. **Read research_state.md** and display a brief status summary:
-   - Best score and model
-   - Total experiments (successful / failed)
-   - Current phase and queue depth
-   - Any accumulated learnings (last 3)
-
-2. **Ask the user** (use AskUserQuestion):
-   - "How many hours should the autonomous loop run?" (suggest: 2h, 4h, 8h, or custom)
-   - If they want to add any new hypotheses or constraints before starting
-
-3. **Reset elapsed time if user requests a fresh budget** (optional):
-   If the user wants to reset the clock, delete `logs/.elapsed_seconds` before launching.
-
-4. **Launch the loop** via Bash (run in background):
-   ```bash
-   bash ./launch_research.sh {hours}
-   ```
-   The script handles everything from here — iteration management, timing, and graceful shutdown.
-
-5. Tell the user: "Research loop started. Monitor with `cat research_state.md` or `./launch_research.sh --status`. Press Ctrl+C in the terminal to stop (state is preserved)."
 
 ---
 
 # INIT MODE — Interactive Setup
 
-This runs once to create `research_state.md`. This is the ONLY phase where you interact with the user.
+This runs once to create `research_state.md`. This is the ONLY mode where you interact with the user.
 
 ## Step 1: Environment Scan
 
@@ -86,7 +52,7 @@ For each file found, report: filename, path, file size. Identify likely train/te
 Ask the user these questions (use AskUserQuestion tool):
 
 1. **Target column**: "Which column is the prediction target?" (Show column names from the identified training file)
-2. **Time budget**: "How many hours should the autonomous loop run?" (Options: 2h, 4h, 8h, 12h, 24h, custom)
+2. **Time budget**: "How many hours of compute budget for the research loop?" (Options: 2h, 4h, 8h, 12h, 24h, custom). This is cumulative experiment time, not wall-clock — pausing and resuming won't consume budget.
 3. **Any domain context?**: Free text — anything the user knows about the problem that would help. This is optional.
 
 ## Step 3: Auto-Detection
@@ -213,6 +179,7 @@ Create `research_state.md` in the current working directory with this exact stru
 - **Task**: {binary_classification|multiclass_classification|regression}
 - **Metric**: {metric_name} ({lower_is_better|higher_is_better})
 - **Time Budget**: {budget_seconds}s ({budget_hours}h)
+- **Elapsed Compute**: 0s
 - **N Folds**: {n_folds from Config Overrides}
 - **Data**:
   - Train: {train_path} ({n_rows} rows x {n_cols} cols)
@@ -272,18 +239,27 @@ Create `research_state.md` in the current working directory with this exact stru
 {empty — will be populated as experiments run}
 ```
 
-## Init Mode Rules
+## Init Mode — Final Step
 
+After writing research_state.md:
 - The first hypothesis MUST be a trivial baseline (default model, numeric features only)
 - Hypotheses 2-5 should be informed by EDA findings
 - Always create the `logs/` directory if it doesn't exist
 - Save the EDA report to `logs/eda_report.json`
 - List all additional data files in Config so the autonomous loop knows they exist
-- After writing research_state.md, tell the user it's ready and that the launcher script will begin the autonomous loop
+- Tell the user:
+  > Setup complete! To start the autonomous research loop, run:
+  > `/loop 1m /auto-research`
+  >
+  > You can continue working normally — each iteration runs when invoked.
+  > To stop the loop: `/loop stop`
+  > To check progress anytime: `cat research_state.md`
 
 ---
 
 # ITERATION MODE — Autonomous Cycle
+
+This mode runs one complete experiment cycle. It is designed to be invoked repeatedly by `/loop` or manually.
 
 ## STRICT AUTONOMY RULES
 
@@ -298,25 +274,27 @@ These rules are ABSOLUTE and override all other instructions:
 
 ## Iteration Cycle
 
-### 1. Parse Invocation Context
-
-The launcher passes context in the prompt. Extract:
-- `iteration_number`: current iteration (integer)
-- `elapsed_seconds`: wall-clock seconds since loop started
-- `budget_seconds`: total wall-clock budget in seconds
-
-Compute: `budget_pct = elapsed_seconds / budget_seconds * 100`
-
-### 2. Read State
+### 1. Read State & Compute Timing
 
 Read `research_state.md` from the current working directory. Parse:
-- Config section (target, metric, task type, data paths, etc.)
-- Global Best (score, model, consecutive failures)
+- Config section (target, metric, task type, data paths, time budget, elapsed compute)
+- Global Best (score, model, consecutive failures, total experiments)
 - Hypothesis Queue (Phase 1, 2, 3)
 - Experiment History (for context on what's been tried)
 - Learnings (accumulated insights)
 
-### 3. Phase Decision
+Compute timing from state:
+- `iteration_number` = Total Experiments + 1
+- `elapsed_seconds` = Elapsed Compute (parsed from Config)
+- `budget_seconds` = Time Budget (parsed from Config)
+- `budget_pct` = elapsed_seconds / budget_seconds * 100
+
+**Budget exhaustion check**: If `budget_pct >= 100` AND Phase 3 has already been completed (check Completed Experiments for a Phase 3 entry), output:
+> Research complete. {Total Experiments} experiments run. Best: {score} ({model}, iter {N}).
+
+Then exit — do nothing further. The `/loop` will keep invoking but each call will be a no-op until the user stops it.
+
+### 2. Phase Decision
 
 Apply these rules IN ORDER — first match wins:
 
@@ -356,7 +334,7 @@ If all hypothesis queues are empty AND `budget_pct < {phase3_budget_pct}`:
 - Otherwise → pick from Phase 1 queue (exploration)
 - Within Phase 1: prioritize hypotheses with shortest estimated time first (maximize learning rate)
 
-### 4. Formulate Hypothesis
+### 3. Formulate Hypothesis
 
 Write the hypothesis as a structured block for the Worker:
 
@@ -375,11 +353,11 @@ Write the hypothesis as a structured block for the Worker:
 **Output directory**: logs/iteration_{NNN}/
 ```
 
-### 5. Spawn Worker
+### 4. Spawn Worker
 
 Use the Agent tool to spawn the `experiment-worker` agent. Provide:
 
-1. The hypothesis block from Step 4
+1. The hypothesis block from Step 3
 2. Data configuration from research_state.md:
    - Train/test file paths
    - Target column name
@@ -398,7 +376,7 @@ Instead of a normal hypothesis, instruct the Worker to:
 - Generate final `submission.csv` in the working directory root using meta-learner applied to test predictions
 - Report the stacked OOF CV score
 
-### 6. Process Results
+### 5. Process Results
 
 Read the Worker's response. Based on status:
 
@@ -418,21 +396,22 @@ Read the Worker's response. Based on status:
 - Record failure reason in learnings
 - Do NOT add to Top 5 or score calculations
 
-### 7. Update research_state.md
+### 6. Update research_state.md
 
 **Before writing**: copy the current `research_state.md` to `research_state.md.bak` as a backup.
 
 Read the current research_state.md, then write the updated version. Updates:
 
-1. **Global Best**: update score/model if improved, update consecutive failures
-2. **Total/Successful Experiments**: increment counters
-3. **Hypothesis Queue**: remove the executed hypothesis, add any new Phase 2 hypotheses from promotions
-4. **Experiment History**:
+1. **Elapsed Compute**: add this iteration's duration_seconds to the existing value
+2. **Global Best**: update score/model if improved, update consecutive failures
+3. **Total/Successful Experiments**: increment counters
+4. **Hypothesis Queue**: remove the executed hypothesis, add any new Phase 2 hypotheses from promotions
+5. **Experiment History**:
    - Add new result to Recent 10 table (drop oldest if >10)
    - Update Top 5 table if this result qualifies
    - Add one-line summary to Completed Experiments
-5. **Learnings**: append any new insights (consolidate if section exceeds 30 lines by merging related learnings)
-6. **Rolling Window Enforcement**: ensure the file stays under ~500 lines total:
+6. **Learnings**: append any new insights (consolidate if section exceeds 30 lines by merging related learnings)
+7. **Rolling Window Enforcement**: ensure the file stays under ~500 lines total:
    - Recent 10: keep only last 10 iterations
    - Top 5: keep only top 5 by score
    - Completed Experiments: keep all (one-liners are cheap)
@@ -440,12 +419,14 @@ Read the current research_state.md, then write the updated version. Updates:
 
 **After writing**: read back `research_state.md` and verify it contains the key sections (Config, Global Best, Hypothesis Queue, Experiment History). If the file appears corrupted, restore from `research_state.md.bak` and retry the write once.
 
-### 8. Verify and Exit
+### 7. Status Output
 
-After updating research_state.md:
-- Verify the file was written successfully (read it back and check it's valid)
-- Output a brief status line: `Iteration {N} complete. {Model} scored {CV}. Global best: {score} (iter {N}). Budget: {pct}% elapsed.`
-- Exit cleanly. The launcher script will invoke you again for the next iteration.
+After updating research_state.md, output a brief status line:
+> Iteration {N} complete. {Model} scored {CV}. Global best: {score} (iter {N}). Budget: {pct}% used ({elapsed}s / {budget}s).
+
+Exit cleanly. `/loop` will invoke this skill again for the next iteration.
+
+---
 
 ## Hypothesis Generation Guidelines
 

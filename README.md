@@ -7,7 +7,6 @@ A Claude Code plugin that runs an autonomous, multi-agent ML research loop. Drop
 ```bash
 cd your-project-with-data/
 cp -r path/to/auto-data-scientist/.claude .claude/
-cp path/to/auto-data-scientist/launch_research.sh .
 cp path/to/auto-data-scientist/requirements.txt .
 pip install -r requirements.txt
 ```
@@ -18,23 +17,24 @@ Then from inside Claude Code:
 /auto-research
 ```
 
-That's it. The skill will:
-1. Scan your data files, ask for the target column and time budget, run full EDA
-2. Generate a `feature_template.py` with dataset-specific preprocessing
-3. Write the research plan to `research_state.md`
-4. Launch the autonomous loop — no further input needed until the budget runs out
+The skill will scan your data, ask for target column and time budget, run EDA, and create the research plan. Then start the autonomous loop:
 
-To resume or start a new run later, invoke `/auto-research` again.
+```
+/loop 1m /auto-research
+```
+
+That's it. Each iteration runs automatically. You can continue working in the same Claude Code session.
 
 ## Architecture
 
 ```
-launch_research.sh                    Outer bash loop (owns the clock)
+/loop 1m /auto-research              Repeats the skill every cycle
   │
-  │  each iteration calls claude CLI
+  │  each invocation runs one iteration
   ▼
 .claude/skills/auto-research/         Master Agent (Supervisor)
   │                                   Reads/writes research_state.md
+  │                                   Computes timing from state
   │                                   Decides phase, picks hypothesis
   │  spawns via Agent tool
   ▼
@@ -53,9 +53,9 @@ launch_research.sh                    Outer bash loop (owns the clock)
 | **Persistence** | Reads/writes `research_state.md` | Writes to `logs/iteration_NNN/` |
 | **Interaction** | Init: interactive. Loop: fully autonomous | Never interacts with user |
 
-### Why an Outer Bash Loop?
+### Context Isolation
 
-Each iteration invokes `claude` CLI fresh — no context window bloat across a 24-hour run. The Master Agent is stateless between invocations; all memory lives in `research_state.md`.
+Each `/loop` invocation is a fresh skill call — no context window bloat across long runs. All memory lives in `research_state.md`. Budget is tracked as cumulative compute time (sum of iteration durations), so pausing and resuming doesn't waste budget.
 
 ## File Structure
 
@@ -67,7 +67,6 @@ your-project/
 │   │       └── SKILL.md              # Master Agent — skill definition
 │   └── agents/
 │       └── experiment-worker.md      # Worker Agent — agent definition
-├── launch_research.sh                # Launcher script (entry point)
 ├── requirements.txt                  # Python dependencies
 ├── feature_template.py               # Created at init — shared preprocessing
 ├── research_state.md                 # Created at init — persistent state
@@ -77,48 +76,62 @@ your-project/
 │   ├── train.csv                     # Your training data
 │   └── test.csv                      # Your test data
 └── logs/
-    ├── .elapsed_seconds              # Cumulative time tracker (for resume)
     ├── eda_report.json               # EDA results from init
     ├── iteration_001/
     │   ├── code.py                   # Self-contained training script
     │   ├── results.json              # Experiment metrics
     │   ├── oof_preds.csv             # Out-of-fold predictions
     │   └── test_preds.csv            # Test set predictions
-    ├── iteration_002/
-    │   └── ...
     └── ...
 ```
 
 ## Usage
 
-### First Run
+### Initialize
 
-From inside Claude Code, run `/auto-research`. The skill will:
-- Scan for CSV/parquet files in the directory
-- Ask for the **target column** (only required input)
-- Auto-detect task type (binary classification, multiclass, regression) and metric
-- Validate data integrity (column alignment, ID uniqueness, target existence)
-- Run full EDA (shape, distributions, correlations, cardinality, missing values)
-- Generate `feature_template.py` with dataset-specific preprocessing
-- Discuss strategy with you
-- Write `research_state.md` with initial hypothesis queue
-- Ask for budget hours and launch the autonomous loop
+```
+/auto-research
+```
 
-### Resume a Stopped Run
+The skill detects no `research_state.md` and enters **Init Mode**:
+- Scans for CSV/parquet files in the directory
+- Asks for the **target column** (only required input)
+- Auto-detects task type (binary classification, multiclass, regression) and metric
+- Validates data integrity (column alignment, ID uniqueness, target existence)
+- Runs full EDA (shape, distributions, correlations, cardinality, missing values)
+- Generates `feature_template.py` with dataset-specific preprocessing
+- Discusses strategy with you
+- Writes `research_state.md` with initial hypothesis queue
 
-Invoke `/auto-research` again from Claude Code. It will show your current progress and let you start a new run. **Elapsed time from prior sessions is tracked** — the budget accounts for all time spent, not just the current session.
+### Start the Loop
+
+```
+/loop 1m /auto-research
+```
+
+Each invocation runs one complete iteration autonomously. You can continue working in the same Claude Code session between iterations.
+
+### Stop the Loop
+
+```
+/loop stop
+```
+
+State is preserved in `research_state.md`. Resume anytime with `/loop 1m /auto-research`.
 
 ### Check Progress
 
-```bash
-./launch_research.sh --status    # Quick summary from terminal
-cat research_state.md             # Full state
-ls logs/                          # Per-iteration outputs
+```
+cat research_state.md
 ```
 
-### Stop Early
+### Run a Single Iteration
 
-Press `Ctrl+C` in the terminal where the loop is running. State is preserved — resume anytime via `/auto-research`.
+```
+/auto-research
+```
+
+When `research_state.md` exists, this runs exactly one iteration — useful for manual control or debugging.
 
 ## Three-Phase Research Strategy
 
@@ -137,21 +150,29 @@ Triggered automatically when a Phase 1 result scores in the top percentile. Hype
 
 ### Phase 3: Meta-Stacking (Endgame)
 
-**Auto-triggered at 90% of the time budget** (configurable). Collects OOF predictions from top-K iterations, trains a Ridge/shallow-tree meta-learner, and produces the final `submission.csv`.
+**Auto-triggered at 90% of the compute budget** (configurable). Collects OOF predictions from top-K iterations, trains a Ridge/shallow-tree meta-learner, and produces the final `submission.csv`.
+
+## Budget System
+
+The budget tracks **cumulative compute time** — the sum of all iteration durations. This means:
+- Pausing and resuming doesn't consume budget
+- Overnight breaks are free
+- Only actual experiment time counts
+
+When budget is exhausted and Phase 3 is complete, `/auto-research` becomes a no-op (outputs "Research complete"). Stop the loop with `/loop stop`.
 
 ## Autonomy & Self-Correction
 
-Once the init interview is complete, the Master Agent operates with **zero human input**:
+Once init is complete, the Master Agent operates with **zero human input**:
 
 | Scenario | Autonomous Response |
 |----------|-------------------|
 | Worker fails 3 times in a row | Pivot to minimal baseline (default LightGBM, numeric features only) |
 | All hypothesis queues empty | Brainstorm new hypotheses using structured templates |
-| 90% of time budget elapsed | Force Phase 3 meta-stacking and produce `submission.csv` |
+| 90% of compute budget elapsed | Force Phase 3 meta-stacking and produce `submission.csv` |
 | Worker script crashes | Worker self-debugs up to 3 attempts before reporting terminal failure |
-| Worker script hangs | Killed by timeout (default 30 min) |
 | State file corrupted | Auto-restore from research_state.md.bak |
-| Disk space low (<1GB) | Loop stops gracefully |
+| Budget exhausted | Graceful no-op until user stops the loop |
 
 ## Supported Task Types
 
@@ -174,58 +195,19 @@ Default settings are in the **Config Overrides** section of `SKILL.md`. Key tuna
 | `phase3_budget_pct` | 90 | When to trigger meta-stacking |
 | `max_consecutive_failures` | 3 | Failures before forcing minimal baseline |
 
-## Output Contracts
-
-### results.json (per iteration)
-
-```json
-{
-  "cv_score": 0.02215,
-  "cv_std": 0.00010,
-  "fold_scores": [0.0220, 0.0223, 0.0219, 0.0225, 0.0221],
-  "duration_seconds": 708.5,
-  "model_type": "lightgbm",
-  "feature_count": 50,
-  "feature_names": ["col1", "col2", "..."],
-  "top_features": [{"name": "col1", "importance": 1523.4}],
-  "calibration_applied": true,
-  "calibration_method": "isotonic",
-  "n_train_rows": 100000,
-  "n_folds": 5,
-  "predictions_mean": 0.0054,
-  "predictions_std": 0.0312
-}
-```
-
-### oof_preds.csv (per iteration)
-
-```
-id,pred_prob,fold
-12345,0.0034,0
-12346,0.0012,1
-```
-
-### test_preds.csv (per iteration)
-
-```
-id,pred_prob
-12345,0.0034
-```
-
 ## Requirements
 
 - **Claude Code CLI** (`claude`) installed and authenticated
 - **Python 3.8+** with dependencies from `requirements.txt`
-- **bash** shell (Git Bash on Windows works)
 
 ## Generalizing to a New Dataset
 
 1. Create a new project folder
 2. Drop your `train.csv` and `test.csv` in it (or `data/` subfolder)
-3. Copy `.claude/`, `launch_research.sh`, and `requirements.txt` into the folder
+3. Copy `.claude/` and `requirements.txt` into the folder
 4. Run `pip install -r requirements.txt`
 5. Open Claude Code in the project folder
 6. Run `/auto-research` — answer the init questions (target column, time budget)
-7. Walk away
+7. Run `/loop 1m /auto-research` — walk away
 
 The plugin auto-detects task type (classification or regression), metric, ID column, and adapts its strategy to the dataset's characteristics.
