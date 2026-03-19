@@ -247,13 +247,8 @@ After writing research_state.md:
 - Always create the `logs/` directory if it doesn't exist
 - Save the EDA report to `logs/eda_report.json`
 - List all additional data files in Config so the autonomous loop knows they exist
-- Tell the user:
-  > Setup complete! To start the autonomous research loop, run:
-  > `/loop 1m /auto-research`
-  >
-  > You can continue working normally — each iteration runs when invoked.
-  > To stop the loop: `/loop stop`
-  > To check progress anytime: `cat research_state.md`
+- Tell the user: "Setup complete! Starting the autonomous research loop. To stop: `/loop stop`. To check progress: `cat research_state.md`"
+- **Start the loop automatically** by invoking the Skill tool with skill `loop` and args `1m /auto-research`
 
 ---
 
