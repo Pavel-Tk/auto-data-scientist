@@ -1,0 +1,16 @@
+# Auto Data Scientist — Python Dependencies
+# Install: pip install -r requirements.txt
+
+# Core
+pandas>=1.5,<3.0
+numpy>=1.24,<3.0
+scikit-learn>=1.2,<2.0
+scipy>=1.10,<2.0
+
+# Gradient Boosting
+lightgbm>=3.3,<5.0
+xgboost>=1.7,<3.0
+
+# Optional: Neural Networks (uncomment if needed)
+# torch>=2.0
+# torchvision>=0.15
