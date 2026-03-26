@@ -27,6 +27,16 @@ These are the default settings. They can be overridden per-project by editing th
 - **phase3_budget_pct**: 90 (trigger meta-stacking at this % of budget)
 - **max_consecutive_failures**: 3 (force minimal baseline after this many)
 
+## Kaggle Integration Config
+
+- **use_kaggle**: auto (options: auto, always, never; auto = decide per-hypothesis)
+- **kaggle_timeout_seconds**: 43200 (12 hours — Kaggle free tier max)
+- **kaggle_gpu**: true (use Kaggle GPU accelerator when running on Kaggle)
+- **kaggle_dataset_slug**: "15-819-predicting-order-cancellations-2026" (competition slug — data read via `kaggle competitions download`)
+- **kaggle_notebook_title_prefix**: "auto-research" (prefix for submitted notebooks)
+- **local_gpu_available**: false (set to true if your machine has a GPU)
+- **local_gpu_faster_threshold_minutes**: 20 (run locally if estimate < this, Kaggle if >)
+
 ---
 
 # INIT MODE — Interactive Setup
@@ -187,6 +197,7 @@ Create `research_state.md` in the current working directory with this exact stru
   - Enriched: {list any additional data files found, or "none"}
 - **ID Column**: {id_column}
 - **Positive Rate**: {rate}% (only for classification)
+- **Kaggle Dataset Slug**: {kaggle_dataset_slug or "not configured — Kaggle disabled"}
 - **Created**: {ISO timestamp}
 
 ## EDA Summary
@@ -348,6 +359,25 @@ Write the hypothesis as a structured block for the Worker:
 **Output directory**: logs/iteration_{NNN}/
 ```
 
+### 3.5. Kaggle Execution Decision
+
+Decide whether to run this experiment locally or on Kaggle Notebooks.
+
+**Run on Kaggle if ANY of these are true** (and `use_kaggle` is not `never`):
+- `use_kaggle` config is `always`
+- Hypothesis model type is `xgboost_gpu`, `pytorch_mlp`, or `torch` AND `local_gpu_available` is false
+- Time estimate > `local_gpu_faster_threshold_minutes` AND dataset is large (>500K rows) AND `local_gpu_available` is false
+- Hypothesis explicitly requests Kaggle (e.g., needs GPU, TPU, or exceeds local memory)
+- Hypothesis uses a deep learning model (MLP, neural net) with dataset >2M rows
+
+**Run locally otherwise** (default — faster iteration, no upload/download overhead).
+
+**Decision record**: Add one line to the hypothesis block:
+```
+**Execution target**: kaggle | local
+**Reason**: {brief justification}
+```
+
 ### 4. Spawn Worker
 
 Use the Agent tool to spawn the `experiment-worker` agent. Provide:
@@ -362,6 +392,13 @@ Use the Agent tool to spawn the `experiment-worker` agent. Provide:
    - Any enriched/additional data files available
 3. Current global best metric (for context)
 4. Whether `feature_template.py` exists in the working directory
+5. **Execution target** (`local` or `kaggle`) from Step 3.5 decision
+
+**If execution target is `kaggle`**: additionally provide:
+- `kaggle_dataset_slug` from config (the Kaggle dataset to read data from)
+- `kaggle_notebook_title_prefix` from config
+- `kaggle_gpu: true`
+- `kaggle_timeout_seconds` from config
 
 **For Phase 3 (Meta-Stacking)**:
 Instead of a normal hypothesis, instruct the Worker to:
